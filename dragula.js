@@ -25,6 +25,7 @@ function dragula (initialContainers, options) {
   var _renderTimer; // timer for setTimeout renderMirrorImage
   var _lastDropTarget = null; // last container item was over
   var _grabbed; // holds mousedown context until first mousemove
+  var _liftTimer; // Timestamp for lift
 
   var o = options || {};
   if (o.moves === void 0) { o.moves = always; }
@@ -39,11 +40,13 @@ function dragula (initialContainers, options) {
   if (o.direction === void 0) { o.direction = 'vertical'; }
   if (o.ignoreInputTextSelection === void 0) { o.ignoreInputTextSelection = true; }
   if (o.mirrorContainer === void 0) { o.mirrorContainer = doc.body; }
+  if (o.liftDelay === void 0) { o.liftDelay = false; }
 
   var drake = emitter({
     containers: o.containers,
     start: manualStart,
     end: end,
+    lift: lift,
     cancel: cancel,
     remove: remove,
     destroy: destroy,
@@ -113,10 +116,35 @@ function dragula (initialContainers, options) {
       }
     }
   }
+  
+  function lift () {
+    if(!_grabbed || (_liftTimer !== false && Date.now() - _liftTimer <= o.liftDelay)) {
+      return; // Too soon
+    }
+    _offsetX = _offsetY = 0; // we could calc these on mousemove but 0,0 is simpler
+    startOnLift();
+  }
+
+  function startOnLift () {
+    var grabbed = _grabbed; // call to end() unsets _grabbed
+    eventualMovements(true);
+    movements();
+    end();
+    start(grabbed);
+    classes.add(_copy || _item, 'gu-transit');
+    renderMirrorImage();
+  }
 
   function startBecauseMouseMoved (e) {
     if (!_grabbed) {
       return;
+    }
+    if (o.liftDelay !== false){
+      _liftTimer = Date.now();
+      setTimeout(function(){
+        lift();
+      }, o.liftDelay);
+      return; // don't lift on click
     }
     if (whichMouseButton(e) === 0) {
       release({});
@@ -221,6 +249,7 @@ function dragula (initialContainers, options) {
 
   function ungrab () {
     _grabbed = false;
+    _liftTimer = false;
     eventualMovements(true);
     movements(true);
   }
@@ -309,7 +338,7 @@ function dragula (initialContainers, options) {
       drake.emit('out', item, _lastDropTarget, _source);
     }
     drake.emit('dragend', item);
-    _source = _item = _copy = _initialSibling = _currentSibling = _renderTimer = _lastDropTarget = null;
+    _source = _item = _copy = _initialSibling = _currentSibling = _renderTimer = _lastDropTarget = _liftTimer = null;
   }
 
   function isInitialPlacement (target, s) {
